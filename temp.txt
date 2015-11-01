@@ -1,0 +1,53 @@
+CREATE PROCEDURE getRankValue(IN id VARCHAR(100))
+BEGIN
+	DECLARE ydiff INTEGER;
+	DECLARE percent REAL;
+	DECLARE newval REAL;
+	DECLARE rank REAL;
+
+	SET @origPrice = (SELECT oPrice FROM Products WHERE productId = id);
+	SET @manuf = (SELECT manufYear FROM Products WHERE productId = id);
+	SET @sellPrice = (SELECT price FROM Products WHERE productId = id);
+	SET @new = (SELECT new FROM Products WHERE productId = id);
+
+	SET percent = (@origPrice - @sellPrice) * 100/ @origPrice;
+	SET ydiff = year(now()) - @manuf;
+	SET newval = 1;
+
+	IF @new = '0' THEN
+		SET newval = 0.5;
+	END IF;
+
+	SET rank = (percent / 3) - 1 * ydiff + 10 * newval;
+
+	INSERT INTO productRank VALUES(id, rank);
+END//
+
+
+CREATE PROCEDURE sendNewMsg(IN fromusr VARCHAR(100), IN tousr VARCHAR(100), IN msg LONGTEXT)
+BEGIN
+	DECLARE nconvId int;
+	DECLARE nconvexist int;
+	SELECT COUNT(*) INTO nconvexist FROM  Conversations WHERE (fuser = fromusr and suser=tousr) or (fuser = tousr and suser=fromusr);
+	IF nconvexist = 0 THEN
+		INSERT INTO Conversations VALUES('', fromusr, tousr, now());
+	END IF;
+	SELECT convId INTO nconvId FROM  Conversations WHERE (fuser = fromusr AND suser=tousr) OR (fuser = tousr AND suser=fromusr);
+	CALL sendConvMsg(fromusr, nconvId, msg);
+END//
+
+
+CREATE PROCEDURE sendConvMsg(IN fromusr VARCHAR(100), IN nconvId INT, IN msg LONGTEXT)
+BEGIN
+	DECLARE T DATETIME;
+	SET T = NOW();
+	INSERT INTO Messages VALUES('', nconvId, fromusr, msg, T);
+	SELECT msgId, sent FROM Messages WHERE convId = nconvId AND userId = fromusr AND sent = T;
+END//
+
+
+CREATE TRIGGER conv_trig AFTER INSERT ON Messages FOR EACH ROW
+BEGIN
+UPDATE Conversations SET last_sent = now() WHERE convId = new.convId;
+END//
+
